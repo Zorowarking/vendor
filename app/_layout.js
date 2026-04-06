@@ -41,8 +41,8 @@ export default function Layout() {
         }
       } else if (profileStatus === 'READY') {
         // Redirect to main app based on role
-        if (role === 'VENDOR' && segments[0] !== '(vendor)') router.replace('/vendor');
-        else if (role === 'RIDER' && segments[0] !== '(rider)') router.replace('/rider');
+        if (role === 'VENDOR' && segments[0] !== '(vendor)') router.replace('/(vendor)');
+        else if (role === 'RIDER' && segments[0] !== '(rider)') router.replace('/(rider)');
       }
     }
   }, [isAuthenticated, role, profileStatus, segments, isMounted]);

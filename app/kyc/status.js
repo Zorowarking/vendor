@@ -67,7 +67,7 @@ export default function KYCStatus() {
             </TouchableOpacity>
           </View>
         );
-      case 'KYC_SUBMITTED':
+    case 'KYC_SUBMITTED':
       case 'UNDER_REVIEW':
       default:
         return (
@@ -80,6 +80,18 @@ export default function KYCStatus() {
             <Text style={styles.statusDescription}>
               Your documents are under review. This usually takes 24-48 hours. We'll notify you once your account is activated.
             </Text>
+            
+            {/* DEV MOCK BUTTON */}
+            <TouchableOpacity 
+              style={styles.devApproveButton}
+              onPress={() => {
+                setKycStatus('APPROVED');
+                setProfileStatus('READY'); // Sets auth state ready for layout parsing
+              }}
+            >
+              <Text style={styles.devApproveText}>[DEV MOCK] Approve KYC</Text>
+            </TouchableOpacity>
+
             <TouchableOpacity 
               style={styles.supportButton}
               onPress={() => Linking.openURL('mailto:support@app.com')}
@@ -246,5 +258,19 @@ const styles = StyleSheet.create({
   stepTextActive: {
     color: Colors.black,
     fontWeight: 'bold',
+  },
+  devApproveButton: {
+    backgroundColor: Colors.info,
+    padding: 12,
+    borderRadius: 8,
+    marginTop: 20,
+    marginBottom: 10,
+    width: '100%',
+    alignItems: 'center'
+  },
+  devApproveText: {
+    color: Colors.white,
+    fontWeight: 'bold',
+    fontSize: 16
   }
 });
