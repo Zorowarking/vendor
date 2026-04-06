@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "889299912788",
+    "project_id": "vantyrn-e20f0",
+    "storage_bucket": "vantyrn-e20f0.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:889299912788:android:e6a50ef9a2df3c207445c1",
+        "android_client_info": {
+          "package_name": "com.vantyrn.com"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBlmojDbiVMO-LXQgBBjfM3YjMXcoaLfuw"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
