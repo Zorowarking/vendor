@@ -45,7 +45,21 @@ export default function RequestsScreen() {
   const [arrived, setArrived] = useState(false);
   const [isAccepting, setIsAccepting] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [profile, setProfile] = useState(null);
   const mapRef = useRef(null);
+
+  useEffect(() => {
+    fetchProfile();
+  }, []);
+
+  const fetchProfile = async () => {
+    try {
+      const data = await riderApi.getProfile();
+      setProfile(data);
+    } catch (e) {
+      console.error('Failed to fetch profile in dashboard');
+    }
+  };
 
   // Cancellation Modal State
   const [isCancelModalVisible, setIsCancelModalVisible] = useState(false);
@@ -270,7 +284,9 @@ export default function RequestsScreen() {
       estimatedEarnings: 8.50,
       distance: '2.4 km',
       items: [{ name: 'Large Pepperoni', qty: 1 }],
-      status: 'PENDING'
+      status: 'PENDING',
+      vendorPhone: '9876543210',
+      customerPhone: '9123456789'
     };
     addPickupRequest(mockRequest);
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -322,13 +338,29 @@ export default function RequestsScreen() {
   const handleNavigate = () => {
     if (!activeOrder) return;
     const destination = activeOrder.status === 'PICKED_UP' ? activeOrder.customerAddress : activeOrder.vendorAddress;
-    const url = Platform.select({
-      ios: `comgooglemaps://?daddr=${encodeURIComponent(destination)}`,
-      android: `google.navigation:q=${encodeURIComponent(destination)}`
+    const encodedDest = encodeURIComponent(destination);
+    
+    // Web platform handles redirection differently
+    if (Platform.OS === 'web') {
+      const webUrl = `https://www.google.com/maps/dir/?api=1&destination=${encodedDest}&travelmode=driving`;
+      window.open(webUrl, '_blank');
+      return;
+    }
+
+    const googleMapsUrl = Platform.select({
+      ios: `comgooglemaps://?daddr=${encodedDest}&directionsmode=driving`,
+      android: `google.navigation:q=${encodedDest}&mode=d`
     });
-    Linking.canOpenURL(url).then(supported => {
-      if (supported) Linking.openURL(url);
-      else Linking.openURL(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(destination)}`);
+
+    const fallbackUrl = `https://www.google.com/maps/dir/?api=1&destination=${encodedDest}&travelmode=driving`;
+
+    Linking.canOpenURL(googleMapsUrl).then(supported => {
+      if (supported) {
+        Linking.openURL(googleMapsUrl);
+      } else {
+        // Fallback to web directions which triggers the app on most modern smartphones
+        Linking.openURL(fallbackUrl);
+      }
     });
   };
 
@@ -356,124 +388,171 @@ export default function RequestsScreen() {
 
   return (
     <View style={styles.container}>
-      {activeOrder ? (
-         <View style={{ flex: 1 }}>
-           {/* Map Section */}
-           <View style={styles.mapContainer}>
-             <MapView
-               ref={mapRef}
-               style={styles.map}
-               provider={PROVIDER_GOOGLE}
-               initialRegion={{
-                 ...pickupLoc,
-                 latitudeDelta: 0.05,
-                 longitudeDelta: 0.05,
-               }}
-               showsUserLocation
-             >
-               <Marker 
-                 coordinate={pickupLoc} 
-                 title="Pickup: Vendor" 
-                 pinColor={Colors.primary} 
-               />
-               <Marker 
-                 coordinate={deliveryLoc} 
-                 title="Dropoff: Customer" 
-                 pinColor={Colors.success} 
-               />
-               {routeCoords.length > 0 && (
-                 <Polyline 
-                   coordinates={routeCoords} 
-                   strokeWidth={4} 
-                   strokeColor={Colors.primary} 
-                 />
-               )}
-             </MapView>
-           </View>
- 
-           {/* Tracking Bottom Sheet */}
-           <View style={styles.bottomSheet}>
-             <View style={styles.sheetHeader}>
-               <View>
-                 <Text style={styles.orderLabel}>Active Delivery</Text>
-                 <Text style={styles.statusDisplay}>
-                   {activeOrder.status?.replace(/_/g, ' ') || 'ON THE WAY TO PICKUP'}
-                 </Text>
-               </View>
-               <TouchableOpacity onPress={handleNavigate} style={styles.navIcon}>
-                 <Ionicons name="navigate-circle" size={44} color={Colors.primary} />
-                 <Text style={styles.navLabel}>Navigate</Text>
-               </TouchableOpacity>
-             </View>
- 
-             <View style={styles.divider} />
- 
-             <ScrollView 
-               contentContainerStyle={styles.sheetScroll}
-               showsVerticalScrollIndicator={false}
-             >
-               <View style={styles.summaryRow}>
-                 <View style={styles.vendorBox}>
-                    <Text style={styles.vendorName}>{activeOrder.vendorName}</Text>
-                    <Text style={styles.vendorAddress} numberOfLines={1}>{activeOrder.vendorAddress}</Text>
-                 </View>
-                 <TouchableOpacity onPress={contactSupport} style={styles.supportBtn}>
-                   <Ionicons name="help-circle-outline" size={20} color={Colors.primary} />
-                   <Text style={styles.supportText}>Support</Text>
-                 </TouchableOpacity>
-               </View>
- 
-               <View style={styles.actionButtons}>
-                 {activeOrder.status !== 'PICKED_UP' ? (
-                   <View>
-                     {!arrived && (
-                       <TouchableOpacity 
-                         style={[styles.mainBtn, { backgroundColor: Colors.warning, marginBottom: 12 }]}
-                         onPress={handleArrived}
-                       >
-                         <Text style={styles.btnText}>I've Arrived at Vendor</Text>
-                       </TouchableOpacity>
-                     )}
-                     <TouchableOpacity 
-                       style={[styles.mainBtn, { backgroundColor: Colors.primary }]}
-                       onPress={() => updateStatus('PICKED_UP')}
-                       disabled={loading}
-                     >
-                       {loading ? <ActivityIndicator color={Colors.white} /> : <Text style={styles.btnText}>Order Picked Up</Text>}
-                     </TouchableOpacity>
-                   </View>
-                 ) : (
-                    <TouchableOpacity 
-                      style={[styles.mainBtn, { backgroundColor: Colors.success }]}
-                      onPress={() => updateStatus('DELIVERED')}
-                      disabled={loading}
-                    >
-                      {loading ? <ActivityIndicator color={Colors.white} /> : <Text style={styles.btnText}>Mark Delivered</Text>}
-                    </TouchableOpacity>
-                  )}
+            {activeOrder ? (
+          <View style={{ flex: 1 }}>
+            {/* Background Map Layer */}
+            <View style={styles.mapBackgroundLayer}>
+              <MapView
+                ref={mapRef}
+                style={styles.map}
+                provider={PROVIDER_GOOGLE}
+                initialRegion={{
+                  ...pickupLoc,
+                  latitudeDelta: 0.05,
+                  longitudeDelta: 0.05,
+                }}
+                showsUserLocation
+              >
+                <Marker 
+                  coordinate={pickupLoc} 
+                  title="Pickup: Vendor" 
+                  pinColor={Colors.primary} 
+                />
+                <Marker 
+                  coordinate={deliveryLoc} 
+                  title="Dropoff: Customer" 
+                  pinColor={Colors.success} 
+                />
+                {routeCoords.length > 0 && (
+                  <Polyline 
+                    coordinates={routeCoords} 
+                    strokeWidth={4} 
+                    strokeColor={Colors.primary} 
+                  />
+                )}
+              </MapView>
+            </View>
 
-                  <TouchableOpacity 
-                    style={styles.emergencyBtn} 
-                    onPress={() => {
-                      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-                      setIsCancelModalVisible(true);
-                    }}
-                  >
-                    <Ionicons name="warning-outline" size={16} color={Colors.error} />
-                    <Text style={styles.emergencyText}>Can't Deliver (Emergency)</Text>
+            {/* Foreground Scrollable Sheet Layer */}
+            <ScrollView 
+              style={styles.foregroundScrollLayer}
+              contentContainerStyle={{ paddingTop: Dimensions.get('window').height * 0.38 }}
+              showsVerticalScrollIndicator={false}
+              stickyHeaderIndices={[1]} // Makes the sheet look like it sticks when pulled up
+            >
+              {/* This empty view allows tapping the map beneath */}
+              <View style={{ height: 0 }} pointerEvents="none" />
+              
+              <View style={styles.bottomSheet}>
+                {/* Drag Handle Indicator */}
+                <View style={styles.dragHandle} />
+
+                <View style={styles.sheetHeader}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.orderLabel}>Active Delivery</Text>
+                    <Text style={styles.statusDisplay}>
+                      {activeOrder.status === 'PENDING' ? 'Heading to Pickup' : 
+                        activeOrder.status === 'PICKED_UP' ? 'En route to Customer' : 
+                        activeOrder.status?.replace(/_/g, ' ') || 'ON THE WAY'}
+                    </Text>
+                  </View>
+                  <TouchableOpacity onPress={handleNavigate} style={styles.navIcon}>
+                    <Ionicons name="navigate-circle" size={44} color={Colors.primary} />
+                    <Text style={styles.navLabel}>Navigate</Text>
                   </TouchableOpacity>
                 </View>
-                <View style={{ height: 120 }} />
-             </ScrollView>
-           </View>
-         </View>
+
+                {/* PRIMARY ACTIONS - Moved to Top */}
+                <View style={styles.actionButtons}>
+                  {activeOrder.status !== 'PICKED_UP' ? (
+                    <View>
+                      {!arrived && (
+                        <TouchableOpacity 
+                          style={[styles.mainBtn, { backgroundColor: Colors.warning, marginBottom: 12 }]}
+                          onPress={handleArrived}
+                        >
+                          <Text style={styles.btnText}>I've Arrived at Vendor</Text>
+                        </TouchableOpacity>
+                      )}
+                      <TouchableOpacity 
+                        style={[styles.mainBtn, { backgroundColor: Colors.primary }]}
+                        onPress={() => updateStatus('PICKED_UP')}
+                        disabled={loading}
+                      >
+                        {loading ? <ActivityIndicator color={Colors.white} /> : <Text style={styles.btnText}>Order Picked Up</Text>}
+                      </TouchableOpacity>
+                    </View>
+                  ) : (
+                      <TouchableOpacity 
+                        style={[styles.mainBtn, { backgroundColor: Colors.success }]}
+                        onPress={() => updateStatus('DELIVERED')}
+                        disabled={loading}
+                      >
+                        {loading ? <ActivityIndicator color={Colors.white} /> : <Text style={styles.btnText}>Mark Delivered</Text>}
+                      </TouchableOpacity>
+                    )}
+                </View>
+
+                {/* SECONDARY ACTIONS - Contact and Details */}
+                <View style={styles.contactRow}>
+                  <TouchableOpacity 
+                    onPress={() => Linking.openURL(`tel:${activeOrder.vendorPhone || '9999999999'}`)} 
+                    style={styles.contactButton}
+                  >
+                    <Ionicons name="call" size={20} color={Colors.primary} />
+                    <Text style={styles.contactButtonText}>Call Vendor</Text>
+                  </TouchableOpacity>
+                  
+                  <TouchableOpacity 
+                    onPress={() => Linking.openURL(`tel:${activeOrder.customerPhone || '9999999999'}`)} 
+                    style={styles.contactButton}
+                  >
+                    <Ionicons name="person" size={20} color={Colors.primary} />
+                    <Text style={styles.contactButtonText}>Call Customer</Text>
+                  </TouchableOpacity>
+                </View>
+
+                <View style={styles.divider} />
+
+                <View style={styles.summaryRow}>
+                  <View style={styles.vendorBox}>
+                      <Text style={styles.vendorName}>{activeOrder.vendorName}</Text>
+                      <Text style={styles.vendorAddress} numberOfLines={1}>{activeOrder.vendorAddress}</Text>
+                  </View>
+                  <TouchableOpacity onPress={contactSupport} style={styles.supportBtn}>
+                    <Ionicons name="help-circle-outline" size={20} color={Colors.primary} />
+                    <Text style={styles.supportText}>Support</Text>
+                  </TouchableOpacity>
+                </View>
+
+                <TouchableOpacity 
+                  style={styles.emergencyBtn} 
+                  onPress={() => {
+                    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+                    setIsCancelModalVisible(true);
+                  }}
+                >
+                  <Ionicons name="warning-outline" size={16} color={Colors.error} />
+                  <Text style={styles.emergencyText}>Can't Deliver (Emergency)</Text>
+                </TouchableOpacity>
+
+                {/* Final spacer to clear the tab bar */}
+                <View style={{ height: 180 }} />
+              </View>
+            </ScrollView>
+          </View>
       ) : (
         <ScrollView 
           contentContainerStyle={{ paddingBottom: 160 }}
           showsVerticalScrollIndicator={false}
-
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[Colors.primary]} />}
         >
+          {profile && profile.commissionModel === null && (
+            <TouchableOpacity 
+              style={styles.setupBanner} 
+              onPress={() => router.push('/(rider)/profile')}
+            >
+              <View style={styles.setupIcon}>
+                <Ionicons name="settings-outline" size={24} color={Colors.white} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.setupTitle}>Final Setup Required</Text>
+                <Text style={styles.setupSub}>Pick your commission model to start earning.</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={20} color={Colors.white} />
+            </TouchableOpacity>
+          )}
+
           <View style={styles.waitingContainer}>
               <Animated.View style={[styles.pulseCircle, { transform: [{ scale: pulseAnim }] }]}>
                 <Ionicons name="bicycle" size={40} color={Colors.primary} />
@@ -639,14 +718,40 @@ const styles = StyleSheet.create({
   waitingSub: { fontSize: 16, color: Colors.subText, marginTop: 8 },
 
   // Tracking Styles
-  mapContainer: { height: '55%', backgroundColor: Colors.border },
+    // Layered Map & Scroll Styles
+  mapBackgroundLayer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: '60%', 
+  },
+  foregroundScrollLayer: {
+    flex: 1,
+    backgroundColor: 'transparent',
+  },
+  dragHandle: {
+    width: 40,
+    height: 5,
+    backgroundColor: Colors.border,
+    borderRadius: 3,
+    alignSelf: 'center',
+    marginBottom: 15,
+  },
   map: { flex: 1 },
   bottomSheet: { 
-    flex: 1, backgroundColor: Colors.white, 
-    borderTopLeftRadius: 30, borderTopRightRadius: 30,
-    marginTop: -30, padding: 20, elevation: 20,
-    shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 10
+    backgroundColor: Colors.white, 
+    borderTopLeftRadius: 32, 
+    borderTopRightRadius: 32,
+    padding: 24, 
+    elevation: 25,
+    shadowColor: '#000', 
+    shadowOpacity: 0.15, 
+    shadowRadius: 15,
+    shadowOffset: { width: 0, height: -5 },
+    minHeight: Dimensions.get('window').height * 0.6,
   },
+
   sheetHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15 },
   orderLabel: { fontSize: 12, color: Colors.subText, fontWeight: '600', textTransform: 'uppercase' },
   statusDisplay: { fontSize: 22, fontWeight: 'bold', color: Colors.black, marginTop: 4 },
@@ -664,9 +769,45 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.primary + '10', borderRadius: 20 
   },
   supportText: { marginLeft: 6, fontSize: 12, fontWeight: 'bold', color: Colors.primary },
-  actionButtons: { width: '100%' },
-  mainBtn: { padding: 18, borderRadius: 16, alignItems: 'center' },
-  btnText: { color: Colors.white, fontWeight: 'bold', fontSize: 18 },
+    actionButtons: { width: '100%', marginVertical: 15 },
+  mainBtn: { 
+    padding: 18, 
+    borderRadius: 16, 
+    alignItems: 'center',
+    elevation: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.2,
+    shadowRadius: 10,
+  },
+
+  btnText: { color: Colors.white, fontWeight: 'bold', fontSize: 18, letterSpacing: 0.5 },
+
+  // New Action Row Styles
+    // New Contact Row Styles
+  contactRow: {
+    flexDirection: 'row',
+    gap: 12,
+    marginBottom: 5,
+  },
+  contactButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.white,
+    paddingVertical: 10,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    gap: 8,
+  },
+  contactButtonText: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    color: Colors.black,
+  },
+
 
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'flex-end' },
   modalContent: { backgroundColor: Colors.white, borderTopLeftRadius: 30, borderTopRightRadius: 30, padding: 25, alignItems: 'center' },
@@ -825,6 +966,40 @@ const styles = StyleSheet.create({
     color: Colors.error,
     textAlign: 'center',
     fontStyle: 'italic',
+  },
+
+  // Setup Banner Styles
+  setupBanner: {
+    backgroundColor: Colors.primary,
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+    margin: 16,
+    borderRadius: 12,
+    elevation: 4,
+    shadowColor: Colors.primary,
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+  },
+  setupIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  setupTitle: {
+    color: Colors.white,
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  setupSub: {
+    color: Colors.white,
+    fontSize: 12,
+    opacity: 0.9,
   }
 });
 

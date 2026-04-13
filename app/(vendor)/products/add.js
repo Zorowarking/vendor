@@ -130,7 +130,7 @@ export default function AddProduct() {
         addProductToStore({ ...productData, id: res.id || Date.now().toString() });
       }
 
-      Alert.alert('Success', 'Product added successfully', [
+      Alert.alert('Submitted', 'Product submitted for review. It will be activated once approved by the admin.', [
         { text: 'OK', onPress: () => router.back() }
       ]);
     } catch (error) {

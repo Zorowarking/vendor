@@ -17,18 +17,67 @@ export const authService = {
   _confirmationResult: null,
 
   /**
-   * Google Login Implementation (Web/Expo Go version)
+   * Google Login Implementation (Expo Go / Web Redirect compatible)
    */
-  googleLogin: async () => {
+  googleLogin: async (idToken) => {
     try {
-      // In Expo Go, Google Login with the JS SDK usually requires AuthSession
-      Alert.alert('Info', 'Google Login in Expo Go requires additional configuration. Use OTP for now.');
-      return null;
+      console.log('--- STARTING GOOGLE_LOGIN ---');
+      
+      if (!idToken) {
+        throw new Error('No Google idToken provided');
+      }
+
+      // Create a Firebase credential with the token
+      const credential = GoogleAuthProvider.credential(idToken);
+      
+      // Sign in to Firebase with the credential
+      const result = await signInWithCredential(auth, credential);
+      console.log('--- FIREBASE GOOGLE SIGN-IN SUCCESS ---');
+      
+      const user = result.user;
+      const sessionToken = await user.getIdToken();
+
+      // Sync and Update Store
+      const { role, profileStatus } = await authService._syncUser(user, sessionToken);
+      
+      return { role, profileStatus };
     } catch (error) {
-      console.error('Google Login Error:', error);
-      Alert.alert('Error', 'Google login failed');
+      console.error('--- GOOGLE_LOGIN ERROR ---', error);
+      Alert.alert('Login Error', 'Unable to sign in with Google. Please try again or use Phone login.');
       throw error;
     }
+  },
+
+  /**
+   * Internal helper to sync user data with the backend
+   */
+  _syncUser: async (user, sessionToken) => {
+    console.log('--- SYNCING WITH BACKEND ---');
+    let role = null;
+    let profileStatus = 'PENDING';
+
+    try {
+      const syncResponse = await axios.post(`${API_BASE_URL}/api/auth/sync`, {}, {
+        headers: { Authorization: `Bearer ${sessionToken}` }
+      });
+      
+      if (syncResponse.data.success) {
+        role = syncResponse.data.user.role;
+        profileStatus = syncResponse.data.user.profileStatus;
+        console.log('--- BACKEND SYNC SUCCESS ---', { role, profileStatus });
+      }
+    } catch (err) {
+      console.warn('Backend sync failed, falling back to PENDING status:', err.message);
+    }
+
+    useAuthStore.getState().login({
+      user: { uid: user.uid, phoneNumber: user.phoneNumber, email: user.email },
+      role,
+      profileStatus,
+      sessionToken,
+    });
+
+    return { role, profileStatus };
   },
 
   /**
@@ -100,32 +149,7 @@ export const authService = {
       const user = result.user;
       const sessionToken = await user.getIdToken();
 
-      console.log('--- SYNCING WITH BACKEND ---');
-      let role = null;
-      let profileStatus = 'PENDING';
-
-      try {
-        const syncResponse = await axios.post(`${API_BASE_URL}/api/auth/sync`, {}, {
-          headers: { Authorization: `Bearer ${sessionToken}` }
-        });
-        
-        if (syncResponse.data.success) {
-          role = syncResponse.data.user.role;
-          profileStatus = syncResponse.data.user.profileStatus;
-          console.log('--- BACKEND SYNC SUCCESS ---', { role, profileStatus });
-        }
-      } catch (err) {
-        console.warn('Backend sync failed, falling back to PENDING status:', err.message);
-      }
-
-      useAuthStore.getState().login({
-        user: { uid: user.uid, phoneNumber: user.phoneNumber },
-        role,
-        profileStatus,
-        sessionToken,
-      });
-
-      return { role, profileStatus };
+      return await authService._syncUser(user, sessionToken);
 
     } catch (error) {
       console.error('--- VERIFY_OTP ERROR ---', error);

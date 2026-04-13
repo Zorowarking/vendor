@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, ScrollView, Image, Alert, KeyboardAvoidingView, Platform } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, ScrollView, Image, Alert, KeyboardAvoidingView, Platform, Modal, FlatList } from 'react-native';
 import { useRouter } from 'expo-router';
 import Colors from '../../constants/Colors';
 import * as ImagePicker from 'expo-image-picker';
@@ -13,11 +13,13 @@ export default function RiderRegisterScreen() {
     phone: user?.phoneNumber || '',
     email: user?.email || '',
     profilePhoto: null,
-    vehicleType: 'Bike',
     vehicleNumber: '',
     vehicleDoc: null,
     workingZone: '',
   });
+  const [isZoneModalVisible, setIsZoneModalVisible] = useState(false);
+  const [zoneSearchQuery, setZoneSearchQuery] = useState('');
+  
   const router = useRouter();
 
   const handleInputChange = (name, value) => {
@@ -111,22 +113,6 @@ export default function RiderRegisterScreen() {
               </View>
             </View>
 
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>Vehicle Type *</Text>
-              <View style={styles.selectorContainer}>
-                {['Bike', 'Car', 'Bicycle', 'On Foot'].map((type) => (
-                  <TouchableOpacity
-                    key={type}
-                    style={[styles.selectorItem, formData.vehicleType === type && styles.selectorItemSelected]}
-                    onPress={() => handleInputChange('vehicleType', type)}
-                  >
-                    <Text style={[styles.selectorText, formData.vehicleType === type && styles.selectorTextSelected]}>
-                      {type}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            </View>
 
             <View style={styles.inputGroup}>
               <Text style={styles.label}>Vehicle Number *</Text>
@@ -151,15 +137,86 @@ export default function RiderRegisterScreen() {
               </TouchableOpacity>
             </View>
 
+
             <View style={styles.inputGroup}>
               <Text style={styles.label}>Preferred Working Zone *</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="e.g. Mumbai Suburban"
-                value={formData.workingZone}
-                onChangeText={(text) => handleInputChange('workingZone', text)}
-              />
+              
+              {/* Dropdown Trigger */}
+              <TouchableOpacity 
+                style={[styles.dropdownTrigger, formData.workingZone && styles.dropdownTriggerSelected]} 
+                onPress={() => setIsZoneModalVisible(true)}
+              >
+                <View style={styles.dropdownLeft}>
+                  <Text style={[styles.dropdownText, !formData.workingZone && styles.dropdownPlaceholder]}>
+                    {formData.workingZone || 'Select your working city'}
+                  </Text>
+                </View>
+                <Image 
+                  source={{ uri: 'https://cdn-icons-png.flaticon.com/512/271/271210.png' }} 
+                  style={styles.dropdownChevron} 
+                />
+              </TouchableOpacity>
             </View>
+
+            {/* Selection Modal */}
+            <Modal
+              visible={isZoneModalVisible}
+              animationType="slide"
+              transparent={true}
+              onRequestClose={() => setIsZoneModalVisible(false)}
+            >
+              <View style={styles.modalOverlay}>
+                <View style={styles.modalContent}>
+                  <View style={styles.modalHeader}>
+                    <Text style={styles.modalTitle}>Choose your city</Text>
+                    <TouchableOpacity onPress={() => setIsZoneModalVisible(false)}>
+                      <Text style={styles.closeButtonText}>Done</Text>
+                    </TouchableOpacity>
+                  </View>
+
+                  <View style={styles.searchContainer}>
+                    <Image 
+                      source={{ uri: 'https://cdn-icons-png.flaticon.com/512/482/482631.png' }} 
+                      style={styles.searchIcon} 
+                    />
+                    <TextInput
+                      style={styles.searchInput}
+                      placeholder="Find your city..."
+                      value={zoneSearchQuery}
+                      onChangeText={setZoneSearchQuery}
+                    />
+                  </View>
+
+                  <Text style={styles.localeHint}>
+                    Tap into your present locale: <Text style={styles.localeStrong}>Hyderabad</Text>
+                  </Text>
+
+                  <FlatList
+                    data={['Hyderabad'].filter(city => city.toLowerCase().includes(zoneSearchQuery.toLowerCase()))}
+                    keyExtractor={(item) => item}
+                    renderItem={({ item }) => (
+                      <TouchableOpacity 
+                        style={styles.cityItem}
+                        onPress={() => {
+                          handleInputChange('workingZone', item);
+                          setIsZoneModalVisible(false);
+                        }}
+                      >
+                        <View style={styles.cityItemLeft}>
+                          <Text style={styles.cityItemName}>{item}</Text>
+                        </View>
+                        {formData.workingZone === item && (
+                          <Image 
+                            source={{ uri: 'https://cdn-icons-png.flaticon.com/512/190/190411.png' }} 
+                            style={styles.checkIcon} 
+                          />
+                        )}
+                      </TouchableOpacity>
+                    )}
+                  />
+                </View>
+              </View>
+            </Modal>
 
             <TouchableOpacity 
               style={styles.nextButton}
@@ -328,5 +385,126 @@ const styles = StyleSheet.create({
     color: Colors.primary,
     fontSize: 14,
     fontWeight: '600',
+  },
+  // Custom Dropdown Styles
+  dropdownTrigger: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderWidth: 1.5,
+    borderColor: Colors.border,
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    height: 56,
+    backgroundColor: Colors.white,
+  },
+  dropdownTriggerSelected: {
+    borderColor: Colors.primary,
+  },
+  dropdownLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  dropdownCityIcon: {
+    width: 24,
+    height: 24,
+    marginRight: 12,
+  },
+  dropdownText: {
+    fontSize: 16,
+    color: Colors.black,
+    fontWeight: '500',
+  },
+  dropdownPlaceholder: {
+    color: Colors.subText,
+  },
+  dropdownChevron: {
+    width: 14,
+    height: 14,
+    tintColor: Colors.darkGrey,
+  },
+  // Modal Styles
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'flex-end',
+  },
+  modalContent: {
+    backgroundColor: Colors.white,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    padding: 24,
+    maxHeight: '80%',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 20,
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: Colors.black,
+  },
+  closeButtonText: {
+    color: Colors.info,
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  searchContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.grey,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    height: 48,
+    marginBottom: 16,
+  },
+  searchIcon: {
+    width: 18,
+    height: 18,
+    tintColor: Colors.darkGrey,
+    marginRight: 8,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: 15,
+    color: Colors.black,
+  },
+  localeHint: {
+    fontSize: 13,
+    color: Colors.subText,
+    marginBottom: 20,
+  },
+  localeStrong: {
+    color: Colors.info,
+    fontWeight: 'bold',
+  },
+  cityItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.grey,
+  },
+  cityItemLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  cityIcon: {
+    width: 28,
+    height: 28,
+    marginRight: 16,
+  },
+  cityItemName: {
+    fontSize: 16,
+    color: Colors.black,
+  },
+  checkIcon: {
+    width: 18,
+    height: 18,
+    tintColor: Colors.info,
   },
 });

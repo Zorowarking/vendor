@@ -138,12 +138,13 @@ export default function ProductsList() {
       <View style={styles.actionContainer}>
         <Switch
           value={item.isAvailable}
-          onValueChange={() => toggleAvailability(item.id, item.isAvailable)}
+          onValueChange={() => item.reviewStatus === 'PENDING' ? Alert.alert('Under Review', 'This item cannot be activated until admin approval.') : toggleAvailability(item.id, item.isAvailable)}
           trackColor={{ false: Colors.border, true: Colors.success + '40' }}
           thumbColor={item.isAvailable ? Colors.success : Colors.subText}
+          disabled={item.reviewStatus === 'PENDING'}
         />
-        <Text style={[styles.availabilityText, { color: item.isAvailable ? Colors.success : Colors.subText }]}>
-          {item.isAvailable ? 'Active' : 'Inactive'}
+        <Text style={[styles.availabilityText, { color: item.reviewStatus === 'PENDING' ? Colors.warning : (item.isAvailable ? Colors.success : Colors.subText) }]}>
+          {item.reviewStatus === 'PENDING' ? 'Review Pending' : (item.isAvailable ? 'Active' : 'Inactive')}
         </Text>
       </View>
     </TouchableOpacity>

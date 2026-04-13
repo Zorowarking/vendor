@@ -18,6 +18,7 @@ import { useRouter, useLocalSearchParams } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import Colors from '../../../../constants/Colors';
 import { vendorApi } from '../../../../services/vendorApi';
+import { useVendorStore } from '../../../../store/vendorStore';
 
 export default function EditProduct() {
   const router = useRouter();
@@ -147,8 +148,20 @@ export default function EditProduct() {
         addOns
       };
 
-      await vendorApi.updateProduct(id, productData);
-      Alert.alert('Success', 'Product updated successfully', [
+      const res = await vendorApi.updateProduct(id, productData);
+      
+      // Update local store for immediate UI feedback
+      const { setProducts, products: currentProducts } = useVendorStore.getState();
+      const updatedProducts = currentProducts.map(p => 
+        p.id === id ? { ...p, ...productData, reviewStatus: res.status } : p
+      );
+      setProducts(updatedProducts);
+
+      const message = res.reviewTriggered 
+        ? 'Product details updated and submitted for review. It will be re-activated once approved.'
+        : 'Product updated successfully.';
+
+      Alert.alert(res.reviewTriggered ? 'Under Review' : 'Success', message, [
         { text: 'OK', onPress: () => router.back() }
       ]);
     } catch (error) {

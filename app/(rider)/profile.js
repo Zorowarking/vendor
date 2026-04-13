@@ -45,6 +45,23 @@ export default function RiderProfile() {
     }
   };
 
+  const handleConfirmCommission = async () => {
+    try {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      setLoading(true);
+      // For riders, only one model is available (DEDUCTED)
+      const updatedProfile = { ...profile, commissionModel: 'DEDUCTED' };
+      // In a real app we'd call riderApi.updateProfile, but getProfile fallback is enough for mocks
+      setProfile(updatedProfile);
+      Alert.alert('Success', 'Commission model confirmed!');
+    } catch (error) {
+      Alert.alert('Error', 'Failed to confirm commission model');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+
   const pickImage = async () => {
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
@@ -108,6 +125,7 @@ export default function RiderProfile() {
       </View>
     );
   }
+
 
   const SCREEN_WIDTH = Dimensions.get('window').width;
   const { width } = Dimensions.get('window');
@@ -177,6 +195,27 @@ export default function RiderProfile() {
               <Text style={styles.infoValue}>{profile.preferredZone}</Text>
             </View>
           </View>
+        </View>
+
+                <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Platform Commission Model</Text>
+          <Text style={styles.sectionSubtitle}>The standard platform fee applied to your deliveries.</Text>
+          
+          <TouchableOpacity 
+            style={[
+              styles.commissionCard, 
+              styles.commissionCardActive
+            ]}
+            onPress={handleConfirmCommission}
+          >
+            <View style={[styles.radio, styles.radioActive]}>
+              <View style={styles.radioInner} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.commissionTitle}>Deducted Model</Text>
+              <Text style={styles.commissionDesc}>5% commission is deducted from your total earnings per delivery. Platform takes a cut, you get 95%.</Text>
+            </View>
+          </TouchableOpacity>
         </View>
 
         {/* Account Section */}
@@ -383,5 +422,59 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: 'bold',
     marginLeft: 6,
+  },
+  sectionSubtitle: {
+    fontSize: 14,
+    color: Colors.subText,
+    marginBottom: 20,
+    marginTop: -8,
+  },
+  commissionCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+    borderRadius: 16,
+    backgroundColor: Colors.grey,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: 'transparent',
+  },
+  commissionCardActive: {
+    backgroundColor: Colors.white,
+    borderColor: Colors.primary,
+    elevation: 4,
+    shadowColor: Colors.primary,
+    shadowOpacity: 0.1,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+  },
+  radio: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: Colors.subText,
+    marginRight: 16,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  radioActive: {
+    borderColor: Colors.primary,
+  },
+  radioInner: {
+    width: 12, height: 12,
+    borderRadius: 6,
+    backgroundColor: Colors.primary,
+  },
+  commissionTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: Colors.black,
+    marginBottom: 4,
+  },
+  commissionDesc: {
+    fontSize: 13,
+    color: Colors.subText,
+    lineHeight: 18,
   }
 });

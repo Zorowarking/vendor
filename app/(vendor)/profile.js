@@ -73,6 +73,22 @@ export default function VendorProfile() {
     }
   };
 
+  const handleUpdateCommission = async (model) => {
+    try {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      setLoading(true);
+      const updatedProfile = { ...profile, commissionModel: model };
+      await vendorApi.updateProfile(updatedProfile);
+      setProfile(updatedProfile);
+      Alert.alert('Success', 'Commission model updated successfully!');
+    } catch (error) {
+      Alert.alert('Error', 'Failed to update commission model');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+
   const handleSaveDetails = async () => {
     setLoading(true);
     try {
@@ -246,6 +262,43 @@ export default function VendorProfile() {
               <Marker coordinate={{ latitude: profile.location.latitude, longitude: profile.location.longitude }} />
             </MapView>
           </View>
+        </View>
+
+                <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Platform Commission Model</Text>
+          <Text style={styles.sectionSubtitle}>Choose how platform fees are applied to your products.</Text>
+          
+          <TouchableOpacity 
+            style={[
+              styles.commissionCard, 
+              profile.commissionModel === 'ADD_ON' && styles.commissionCardActive
+            ]}
+            onPress={() => handleUpdateCommission('ADD_ON')}
+          >
+            <View style={[styles.radio, profile.commissionModel === 'ADD_ON' && styles.radioActive]}>
+              {profile.commissionModel === 'ADD_ON' && <View style={styles.radioInner} />}
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.commissionTitle}>Add-on Model</Text>
+              <Text style={styles.commissionDesc}>5% is added on top of your price. Customers pay more, you receive your full price.</Text>
+            </View>
+          </TouchableOpacity>
+
+          <TouchableOpacity 
+            style={[
+              styles.commissionCard, 
+              profile.commissionModel === 'DEDUCTED' && styles.commissionCardActive
+            ]}
+            onPress={() => handleUpdateCommission('DEDUCTED')}
+          >
+            <View style={[styles.radio, profile.commissionModel === 'DEDUCTED' && styles.radioActive]}>
+              {profile.commissionModel === 'DEDUCTED' && <View style={styles.radioInner} />}
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.commissionTitle}>Deducted Model</Text>
+              <Text style={styles.commissionDesc}>5% is deducted from your price. Customers pay your price, platform takes a cut.</Text>
+            </View>
+          </TouchableOpacity>
         </View>
 
         <View style={styles.section}>
@@ -576,6 +629,61 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     marginLeft: 6,
   },
+  sectionSubtitle: {
+    fontSize: 14,
+    color: Colors.subText,
+    marginBottom: 20,
+    marginTop: -8,
+  },
+  commissionCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+    borderRadius: 16,
+    backgroundColor: Colors.grey,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: 'transparent',
+  },
+  commissionCardActive: {
+    backgroundColor: Colors.white,
+    borderColor: Colors.primary,
+    elevation: 4,
+    shadowColor: Colors.primary,
+    shadowOpacity: 0.1,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+  },
+  radio: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: Colors.subText,
+    marginRight: 16,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  radioActive: {
+    borderColor: Colors.primary,
+  },
+  radioInner: {
+    width: 12, height: 12,
+    borderRadius: 6,
+    backgroundColor: Colors.primary,
+  },
+  commissionTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: Colors.black,
+    marginBottom: 4,
+  },
+  commissionDesc: {
+    fontSize: 13,
+    color: Colors.subText,
+    lineHeight: 18,
+  },
+
 
   // Modal Styles
   modalOverlay: {

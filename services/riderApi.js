@@ -124,7 +124,8 @@ export const riderApi = {
         vehicleDetails: { type: 'Bike', number: 'NY-1234' },
         preferredZone: 'Downtown NY',
         kycStatus: 'Approved',
-        complianceFlags: ['LATE_PICKUP']
+        complianceFlags: ['LATE_PICKUP'],
+        commissionModel: null // null triggers the "Complete Setup" prompt
       };
     }
   }

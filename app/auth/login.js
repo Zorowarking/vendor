@@ -6,6 +6,12 @@ import { authService } from '../../services/auth';
 import { useAuthStore } from '../../store/authStore';
 import { FirebaseRecaptchaVerifierModal } from 'expo-firebase-recaptcha';
 import { app } from '../../services/firebase';
+import * as WebBrowser from 'expo-web-browser';
+import * as Google from 'expo-auth-session/providers/google';
+import { makeRedirectUri } from 'expo-auth-session';
+
+// Allows the browser to handle the redirect back to the app
+WebBrowser.maybeCompleteAuthSession();
 
 export default function LoginScreen() {
   const [phoneNumber, setPhoneNumber] = useState('');
@@ -13,6 +19,38 @@ export default function LoginScreen() {
   const recaptchaVerifier = React.useRef(null);
 
   const [loading, setLoading] = useState(false);
+
+  // Google Auth Request Hook
+  const [request, response, promptAsync] = Google.useAuthRequest({
+    clientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
+    androidClientId: process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID,
+    iosClientId: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID,
+    // By providing nothing to makeRedirectUri, it automatically figures out we are on
+    // localhost when running via 'npx expo start --web', allowing Google Auth to work.
+    redirectUri: makeRedirectUri(),
+  });
+
+  // Handle Google Auth Response
+  React.useEffect(() => {
+    if (response?.type === 'success') {
+      const { id_token } = response.params;
+      handleGoogleLogin(id_token);
+    }
+  }, [response]);
+
+  const handleGoogleLogin = async (idToken) => {
+    setLoading(true);
+    try {
+      console.log('UI: Starting Google Login...');
+      await authService.googleLogin(idToken);
+      console.log('UI: Google Login Success');
+      // Layout.js handles redirection based on auth state
+    } catch (err) {
+      console.error('UI: Google Login Failed', err);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleSendOTP = async () => {
     if (loading) return;
@@ -104,7 +142,8 @@ export default function LoginScreen() {
 
         <TouchableOpacity 
           style={styles.googleButton}
-          onPress={() => authService.googleLogin()}
+          onPress={() => promptAsync()}
+          disabled={!request || loading}
         >
           <Image 
             source={{ uri: 'https://cdn-icons-png.flaticon.com/512/300/300221.png' }} 

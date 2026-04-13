@@ -7,9 +7,9 @@ const MOCK_PRODUCTS_KEY = 'vendor_mock_products_v1';
 
 // Initial default products
 const DEFAULT_PRODUCTS = [
-  { id: '1', name: 'Margherita Pizza', price: 12.99, category: 'Pizza', type: 'Veg', isAvailable: true, image: 'https://images.unsplash.com/photo-1604382354936-07c5d9983bd3', addOns: [] },
-  { id: '2', name: 'Pepperoni Pizza', price: 14.99, category: 'Pizza', type: 'Non-Veg', isAvailable: true, image: 'https://images.unsplash.com/photo-1628840042765-356cda07504e', addOns: [] },
-  { id: '3', name: 'Veggie Burger', price: 9.99, category: 'Burgers', type: 'Veg', isAvailable: false, image: 'https://images.unsplash.com/photo-1512152272829-e3139592d56f', addOns: [] },
+  { id: '1', name: 'Margherita Pizza', price: 12.99, category: 'Pizza', type: 'Veg', isAvailable: true, image: 'https://images.unsplash.com/photo-1604382354936-07c5d9983bd3', addOns: [], reviewStatus: 'APPROVED' },
+  { id: '2', name: 'Pepperoni Pizza', price: 14.99, category: 'Pizza', type: 'Non-Veg', isAvailable: true, image: 'https://images.unsplash.com/photo-1628840042765-356cda07504e', addOns: [], reviewStatus: 'APPROVED' },
+  { id: '3', name: 'Veggie Burger', price: 9.99, category: 'Burgers', type: 'Veg', isAvailable: false, image: 'https://images.unsplash.com/photo-1512152272829-e3139592d56f', addOns: [], reviewStatus: 'APPROVED' },
 ];
 
 let mockProducts = [...DEFAULT_PRODUCTS];
@@ -96,7 +96,11 @@ export const vendorApi = {
       return response.data;
     } catch (error) {
       console.warn('vendorApi.addProduct mock fallback (persisting to storage):', error.message);
-      const newProduct = { ...data, id: Date.now().toString() };
+      const newProduct = { 
+        ...data, 
+        id: Date.now().toString(),
+        reviewStatus: 'PENDING' // New products always go to review
+      };
       mockProducts = [newProduct, ...mockProducts];
       await syncMocks();
       return { success: true, id: newProduct.id, product: newProduct };
@@ -109,9 +113,31 @@ export const vendorApi = {
       const response = await client.put(`/vendor/products/${id}`, data);
       return response.data;
     } catch (error) {
-      mockProducts = mockProducts.map(p => p.id === id ? { ...p, ...data } : p);
+      const existing = mockProducts.find(p => p.id === id);
+      let newStatus = existing?.reviewStatus || 'APPROVED';
+      
+      if (existing) {
+        // Check if anything other than price or isAvailable changed
+        const criticalFields = ['name', 'description', 'category', 'type', 'image', 'addOns'];
+        const changedCritical = criticalFields.some(field => {
+          if (field === 'addOns') {
+            return JSON.stringify(existing[field]) !== JSON.stringify(data[field]);
+          }
+          return existing[field] !== data[field] && data[field] !== undefined;
+        });
+
+        if (changedCritical) {
+          newStatus = 'PENDING';
+        }
+      }
+
+      mockProducts = mockProducts.map(p => p.id === id ? { ...p, ...data, reviewStatus: newStatus } : p);
       await syncMocks();
-      return { success: true };
+      return { 
+        success: true, 
+        reviewTriggered: newStatus === 'PENDING' && existing?.reviewStatus !== 'PENDING',
+        status: newStatus 
+      };
     }
   },
 
@@ -156,7 +182,8 @@ export const vendorApi = {
         banner: 'https://images.unsplash.com/photo-1513104890138-7c749659a591',
         bankDetails: { accountNumber: '****6789', bankName: 'Global Bank' },
         kycStatus: 'Approved',
-        complianceFlags: []
+        complianceFlags: [],
+        commissionModel: null // null triggers the "Complete Setup" prompt
       };
     }
   },

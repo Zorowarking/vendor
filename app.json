@@ -30,7 +30,8 @@
       "expo-router",
       "expo-document-picker",
       "expo-location",
-      "expo-image-picker"
+      "expo-image-picker",
+      "@react-native-google-signin/google-signin"
     ],
     "experiments": {
       "typedRoutes": false

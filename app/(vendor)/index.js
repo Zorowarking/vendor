@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Modal, Pressable, RefreshControl, Dimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
 
 
 import { useRouter } from 'expo-router';
@@ -18,6 +19,35 @@ import EmptyState from '../../components/EmptyState';
 const { width } = Dimensions.get('window');
 const INCOMING_SLA_SECONDS = 300; // 5 minutes
 
+const checkOperatingHours = (hoursRange) => {
+  if (!hoursRange) return true; // Default to open if not set
+  try {
+    const [startStr, endStr] = hoursRange.split(' - ');
+    const now = new Date();
+    
+    const parseTime = (timeStr) => {
+      const [time, modifier] = timeStr.split(' ');
+      let [hours, minutes] = time.split(':');
+      if (hours === '12') hours = '00';
+      if (modifier === 'PM') hours = parseInt(hours, 10) + 12;
+      const d = new Date();
+      d.setHours(parseInt(hours, 10), parseInt(minutes, 10), 0, 0);
+      return d;
+    };
+
+    const startTime = parseTime(startStr);
+    const endTime = parseTime(endStr);
+    
+    // Handle overnight shifts (e.g., 10 PM - 2 AM)
+    if (endTime < startTime) {
+      return now >= startTime || now <= endTime;
+    }
+    return now >= startTime && now <= endTime;
+  } catch (e) {
+    return true; // Fallback to avoid blocking orders on parse error
+  }
+};
+
 
 function ActiveTimer({ acceptedAt }) {
   const [elapsed, setElapsed] = useState(0);
@@ -34,7 +64,7 @@ function ActiveTimer({ acceptedAt }) {
   return <Text style={styles.timeSinceText}>{mins} min ago</Text>;
 }
 
-function IncomingOrderModal({ visible, orders, onAccept, onReject }) {
+function IncomingOrderModal({ visible, orders, onAccept, onReject, isOutsideHours }) {
   const order = orders[0]; // Show the oldest pending order
   const [timeLeft, setTimeLeft] = useState(INCOMING_SLA_SECONDS);
 
@@ -75,6 +105,13 @@ function IncomingOrderModal({ visible, orders, onAccept, onReject }) {
         <View style={[styles.modalContent, isBreached && styles.modalBreached]}>
           <Text style={styles.modalTitle}>New Incoming Order!</Text>
           
+          {isOutsideHours && (
+            <View style={styles.outsideHoursBadge}>
+              <Ionicons name="moon" size={12} color="#856404" />
+              <Text style={styles.outsideHoursText}>Received outside operating hours</Text>
+            </View>
+          )}
+
           <View style={styles.cardHeader}>
             <Text style={styles.orderId}>Order #{order.id}</Text>
             <View style={[styles.timerBadge, isDanger && styles.timerBadgeDanger]}>
@@ -106,6 +143,85 @@ function IncomingOrderModal({ visible, orders, onAccept, onReject }) {
           {orders.length > 1 && (
             <Text style={styles.queueText}>+ {orders.length - 1} more in queue</Text>
           )}
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+const REJECTION_REASONS = [
+  'Store closed',
+  'Kitchen closed',
+  'Item(s) unavailable',
+  'Unable to fulfill order',
+  'Staff unavailable',
+  'Technical issue',
+  'Other'
+];
+
+function RejectionReasonModal({ visible, onCancel, onConfirm }) {
+  const [selectedReason, setSelectedReason] = useState(null);
+  const [otherText, setOtherText] = useState('');
+
+  const canConfirm = selectedReason && (selectedReason !== 'Other' || otherText.trim().length > 0);
+
+  const handleConfirm = () => {
+    if (!canConfirm) return;
+    const finalReason = selectedReason === 'Other' ? `Other: ${otherText}` : selectedReason;
+    onConfirm(finalReason);
+    setSelectedReason(null);
+    setOtherText('');
+  };
+
+  return (
+    <Modal visible={visible} transparent animationType="fade">
+      <View style={styles.modalOverlay}>
+        <View style={styles.rejectionContent}>
+          <Text style={styles.rejectionTitle}>Reject Order</Text>
+          <Text style={styles.rejectionSub}>Please select a mandatory reason to reject this order.</Text>
+          
+          <ScrollView style={{ maxHeight: 300 }}>
+            {REJECTION_REASONS.map(reason => (
+              <TouchableOpacity 
+                key={reason} 
+                style={[styles.reasonItem, selectedReason === reason && styles.reasonItemActive]}
+                onPress={() => setSelectedReason(reason)}
+              >
+                <View style={[styles.radio, selectedReason === reason && styles.radioActive]}>
+                  {selectedReason === reason && <View style={styles.radioInner} />}
+                </View>
+                <Text style={[styles.reasonText, selectedReason === reason && styles.reasonTextActive]}>
+                  {reason}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+
+          {selectedReason === 'Other' && (
+            <View style={styles.otherInputContainer}>
+              <Text style={styles.otherLabel}>Please specify *</Text>
+              <TextInput 
+                style={styles.otherInput} 
+                placeholder="Enter reason..." 
+                value={otherText}
+                onChangeText={setOtherText}
+                multiline
+              />
+            </View>
+          )}
+
+          <View style={styles.actionRowModal}>
+            <TouchableOpacity style={styles.cancelBtn} onPress={onCancel}>
+              <Text style={styles.cancelBtnText}>Back</Text>
+            </TouchableOpacity>
+            <TouchableOpacity 
+              style={[styles.confirmRejectBtn, !canConfirm && styles.disabledBtn]} 
+              onPress={handleConfirm}
+              disabled={!canConfirm}
+            >
+              <Text style={styles.confirmRejectBtnText}>Confirm Rejection</Text>
+            </TouchableOpacity>
+          </View>
         </View>
       </View>
     </Modal>
@@ -188,7 +304,22 @@ export default function VendorOrdersDashboard() {
   const [activeTab, setActiveTab] = useState('ACTIVE'); // 'ACTIVE' or 'HISTORY'
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [profile, setProfile] = useState(null);
+  const [rejectOrderId, setRejectOrderId] = useState(null);
   const soundRef = useRef(null);
+
+  useEffect(() => {
+    fetchProfile();
+  }, []);
+
+  const fetchProfile = async () => {
+    try {
+      const data = await vendorApi.getProfile();
+      setProfile(data);
+    } catch (e) {
+      console.error('Failed to fetch profile in dashboard');
+    }
+  };
 
 
   useEffect(() => {
@@ -263,18 +394,19 @@ export default function VendorOrdersDashboard() {
   };
 
   const handleReject = (orderId) => {
-    Alert.alert('Reject Order', 'Are you sure you want to reject this order?', [
-      { text: 'Cancel', style: 'cancel' },
-      { 
-        text: 'Reject', style: 'destructive',
-        onPress: async () => {
-          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-          await vendorApi.rejectOrder(orderId, 'Rejected by vendor');
-          useVendorStore.getState().moveToHistory(orderId);
-          updateOrder(orderId, { status: 'CANCELLED' });
-        }
-      }
-    ]);
+    setRejectOrderId(orderId);
+  };
+
+  const confirmRejection = async (reason) => {
+    try {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+      await vendorApi.rejectOrder(rejectOrderId, reason);
+      useVendorStore.getState().moveToHistory(rejectOrderId);
+      updateOrder(rejectOrderId, { status: 'CANCELLED' });
+      setRejectOrderId(null);
+    } catch (e) {
+      Alert.alert('Error', 'Failed to reject order');
+    }
   };
 
   const onRefresh = async () => {
@@ -303,6 +435,22 @@ export default function VendorOrdersDashboard() {
         <View style={styles.offlineBanner}>
           <Text style={styles.offlineText}>You are offline — no new orders will be received.</Text>
         </View>
+      )}
+
+      {profile && profile.commissionModel === null && (
+        <TouchableOpacity 
+          style={styles.setupBanner} 
+          onPress={() => router.push('/(vendor)/profile')}
+        >
+          <View style={styles.setupIcon}>
+            <Ionicons name="settings-outline" size={24} color={Colors.white} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.setupTitle}>Final Step Required</Text>
+            <Text style={styles.setupSub}>Complete your setup by choosing a commission model.</Text>
+          </View>
+          <Ionicons name="chevron-forward" size={20} color={Colors.white} />
+        </TouchableOpacity>
       )}
 
       <TouchableOpacity style={styles.devButton} onPress={triggerMockOrder}>
@@ -354,7 +502,14 @@ export default function VendorOrdersDashboard() {
         visible={incomingOrders.length > 0} 
         orders={incomingOrders} 
         onAccept={handleAccept} 
-        onReject={handleReject} 
+        onReject={handleReject}
+        isOutsideHours={profile ? !checkOperatingHours(profile.operatingHours) : false}
+      />
+
+      <RejectionReasonModal 
+        visible={!!rejectOrderId}
+        onCancel={() => setRejectOrderId(null)}
+        onConfirm={confirmRejection}
       />
     </View>
   );
@@ -414,6 +569,160 @@ const styles = StyleSheet.create({
   rejectText: { color: Colors.error, fontWeight: 'bold', fontSize: 16 },
   acceptButtonModal: { flex: 1, paddingVertical: 14, borderRadius: 8, backgroundColor: Colors.success, marginLeft: 8, alignItems: 'center' },
   acceptText: { color: Colors.white, fontWeight: 'bold', fontSize: 16 },
-  breachedWarning: { color: Colors.error, fontWeight: 'bold', marginTop: 8, textAlign: 'center', fontSize: 16 },
-  queueText: { textAlign: 'center', marginTop: 16, color: Colors.subText, fontStyle: 'italic' }
+  breachedWarning: { color: Colors.error, fontSize: 13, textAlign: 'center', marginTop: 10, fontWeight: 'bold' },
+  
+  outsideHoursBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fff3cd',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#ffeeba',
+  },
+  outsideHoursText: {
+    color: '#856404',
+    fontSize: 11,
+    fontWeight: 'bold',
+    marginLeft: 6,
+  },
+
+  rejectionContent: {
+    backgroundColor: Colors.white,
+    padding: 24,
+    borderRadius: 24,
+    width: width * 0.9,
+    maxHeight: '80%',
+  },
+  rejectionTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: Colors.black,
+    marginBottom: 8,
+  },
+  rejectionSub: {
+    fontSize: 14,
+    color: Colors.subText,
+    marginBottom: 20,
+  },
+  reasonItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.grey,
+  },
+  reasonItemActive: {
+    backgroundColor: Colors.primary + '08',
+  },
+  radio: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    borderWidth: 2,
+    borderColor: Colors.border,
+    marginRight: 12,
+    justifyContent: 'center',
+    alignItems: 'center'
+  },
+  radioActive: {
+    borderColor: Colors.primary,
+  },
+  radioInner: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: Colors.primary,
+  },
+  reasonText: {
+    fontSize: 16,
+    color: Colors.black,
+  },
+  reasonTextActive: {
+    color: Colors.primary,
+    fontWeight: 'bold',
+  },
+  otherInputContainer: {
+    marginTop: 16,
+    marginBottom: 10,
+  },
+  otherLabel: {
+    fontSize: 13,
+    fontWeight: 'bold',
+    color: Colors.subText,
+    marginBottom: 6,
+  },
+  otherInput: {
+    borderWidth: 1,
+    borderColor: Colors.border,
+    borderRadius: 10,
+    padding: 12,
+    fontSize: 15,
+    backgroundColor: Colors.grey,
+    minHeight: 60,
+    textAlignVertical: 'top',
+  },
+  cancelBtn: {
+    flex: 1,
+    paddingVertical: 14,
+    alignItems: 'center',
+    marginRight: 10,
+  },
+  cancelBtnText: {
+    color: Colors.darkGrey,
+    fontWeight: 'bold',
+    fontSize: 16,
+  },
+  confirmRejectBtn: {
+    flex: 2,
+    backgroundColor: Colors.error,
+    paddingVertical: 14,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  confirmRejectBtnText: {
+    color: Colors.white,
+    fontWeight: 'bold',
+    fontSize: 16,
+  },
+  disabledBtn: {
+    opacity: 0.5,
+  },
+  queueText: { textAlign: 'center', marginTop: 16, color: Colors.subText, fontStyle: 'italic' },
+  
+  // Setup Banner Styles
+  setupBanner: {
+    backgroundColor: Colors.primary,
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+    margin: 16,
+    borderRadius: 12,
+    elevation: 4,
+    shadowColor: Colors.primary,
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+  },
+  setupIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  setupTitle: {
+    color: Colors.white,
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  setupSub: {
+    color: Colors.white,
+    fontSize: 12,
+    opacity: 0.9,
+  }
 });
